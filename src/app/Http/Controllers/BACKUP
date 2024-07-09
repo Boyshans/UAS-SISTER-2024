@@ -1,0 +1,129 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Mahasiswa;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
+use illuminate\Models\User;
+
+class ApiMahasiswaController extends Controller
+{
+    public function login(Request $request)
+    {
+        $credentials = $request->only('email', 'password');
+
+        if (Auth::attempt($credentials)) {
+            $user = Auth::user();
+            $token = $user->createToken('auth_token')->plainTextToken;
+
+            return response()->json([
+                'access_token' => $token,
+                'token_type' => 'Bearer',
+            ]);
+        }
+
+        return response()->json([
+            'message' => 'Invalid login credentials',
+        ], 401);
+    }
+      
+
+    public function index()
+    {
+        $mahasiswas = Mahasiswa::all();
+
+        // Mengubah data untuk menyertakan URL foto
+        $mahasiswas->each(function ($mahasiswa) {
+            if ($mahasiswa->foto) {
+                $mahasiswa->foto_url = asset('storage/fotos' . $mahasiswa->foto);
+            }
+        });
+
+        return response()->json($mahasiswas, 200);
+    }
+
+    public function store(Request $request)
+    {
+        $request->validate([
+            'nama' => 'required',
+            'nim' => 'required|unique:mahasiswas',
+            'tanggal_lahir' => 'required|date',
+            'semester' => 'required|integer',
+            'jurusan' => 'required',
+            'foto' => 'image|nullable'
+        ]);
+
+        $path = $request->file('foto') ? $request->file('foto')->store('public/fotos') : null;
+
+        $mahasiswa = Mahasiswa::create([
+            'nama' => $request->nama,
+            'nim' => $request->nim,
+            'tanggal_lahir' => $request->tanggal_lahir,
+            'semester' => $request->semester,
+            'jurusan' => $request->jurusan,
+            'foto' => $path,
+        ]);
+
+        return response()->json($mahasiswa, 201);
+    }
+
+    public function show($id)
+    {
+        $mahasiswa = Mahasiswa::findOrFail($id);
+
+        if ($mahasiswa->foto) {
+            $mahasiswa->foto_url = asset('storage/' . $mahasiswa->foto);
+        }
+
+        return response()->json($mahasiswa, 200);
+    }
+
+    public function update(Request $request, $id)
+    {
+        $mahasiswa = Mahasiswa::findOrFail($id);
+
+        $request->validate([
+            'nama' => 'required',
+            'nim' => 'required|unique:mahasiswas,nim,' . $mahasiswa->id,
+            'tanggal_lahir' => 'required|date',
+            'semester' => 'required|integer',
+            'jurusan' => 'required',
+            'foto' => 'image|nullable'
+        ]);
+
+        if ($request->hasFile('foto')) {
+            if ($mahasiswa->foto) {
+                Storage::delete($mahasiswa->foto);
+            }
+            $path = $request->file('foto')->store('public/fotos');
+        } else {
+            $path = $mahasiswa->foto;
+        }
+
+        $mahasiswa->update([
+            'nama' => $request->nama,
+            'nim' => $request->nim,
+            'tanggal_lahir' => $request->tanggal_lahir,
+            'semester' => $request->semester,
+            'jurusan' => $request->jurusan,
+            'foto' => $path,
+        ]);
+
+        return response()->json($mahasiswa, 200);
+    }
+
+    public function destroy($id)
+    {
+        $mahasiswa = Mahasiswa::findOrFail($id);
+
+        if ($mahasiswa->foto) {
+            Storage::delete($mahasiswa->foto);
+        }
+
+        $mahasiswa->delete();
+
+        return response()->json(null, 204);
+    }
+}
